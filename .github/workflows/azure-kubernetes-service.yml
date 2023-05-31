@@ -79,7 +79,7 @@ jobs:
       uses: Azure/k8s-create-secret@v1.1
       with:
         # Container registry url
-        container-registry-url: https://index.docker.io/v1/
+        container-registry-url: https://acrnsr.azurecr.io
         # Container registry username
         container-registry-username: '${{secrets.DOCKER_LOGIN}}'
         # Container registry password
@@ -98,7 +98,7 @@ jobs:
           aks/deployment.yml
           aks/service.yml
         # Fully qualified resource URL of the image(s) to be used for substitutions on the manifest files Example: contosodemo.azurecr.io/helloworld:test
-        images: '${{secrets.DOCKER_LOGIN}}/githubactions-aks-demo:${{github.sha}}'
+        images: '${{secrets.DOCKER_LOGIN}}/githubactions-k8:${{github.sha}}'
         # Name of a docker-registry secret that has already been set up within the cluster. Each of these secret names are added under imagePullSecrets field for the workloads found in the input manifest files
         imagepullsecrets: docker-image-pull-secret
         # deploy/promote/reject
