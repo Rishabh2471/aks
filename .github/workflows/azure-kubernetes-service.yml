@@ -1,105 +1,48 @@
-# This workflow will build and push an application to a Azure Kubernetes Service (AKS) cluster when you push your code
-#
-# This workflow assumes you have already created the target AKS cluster and have created an Azure Container Registry (ACR)
-# The ACR should be attached to the AKS cluster
-# For instructions see:
-#   - https://docs.microsoft.com/en-us/azure/aks/kubernetes-walkthrough-portal
-#   - https://docs.microsoft.com/en-us/azure/container-registry/container-registry-get-started-portal
-#   - https://learn.microsoft.com/en-us/azure/aks/cluster-container-registry-integration?tabs=azure-cli#configure-acr-integration-for-existing-aks-clusters
-#   - https://github.com/Azure/aks-create-action
-#
-# To configure this workflow:
-#
-# 1. Set the following secrets in your repository (instructions for getting these can be found at https://docs.microsoft.com/en-us/azure/developer/github/connect-from-azure?tabs=azure-cli%2Clinux):
-#    - AZURE_CLIENT_ID
-#    - AZURE_TENANT_ID
-#    - AZURE_SUBSCRIPTION_ID
-#
-# 2. Set the following environment variables (or replace the values below):
-#    - AZURE_CONTAINER_REGISTRY (name of your container registry / ACR)
-#    - RESOURCE_GROUP (where your cluster is deployed)
-#    - CLUSTER_NAME (name of your AKS cluster)
-#    - CONTAINER_NAME (name of the container image you would like to push up to your ACR)
-#    - IMAGE_PULL_SECRET_NAME (name of the ImagePullSecret that will be created to pull your ACR image)
-#    - DEPLOYMENT_MANIFEST_PATH (path to the manifest yaml for your deployment)
-#
-# For more information on GitHub Actions for Azure, refer to https://github.com/Azure/Actions
-# For more samples to get started with GitHub Action workflows to deploy to Azure, refer to https://github.com/Azure/actions-workflow-samples
-# For more options with the actions used below please refer to https://github.com/Azure/login
-
-name: AKS Deployment
-
-# Controls when the action will run. Triggers the workflow on push or pull request
-# events but only for the master branch
+name: build_deploy_aks
 on:
   push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+    paths:
+      - "azure-vote/**"
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-    - uses: actions/checkout@v2
-
-        # Optional package source for which to set up authentication. Will consult any existing NuGet.config in the root of the repo and provide a temporary NuGet.config using the NUGET_AUTH_TOKEN environment variable as a ClearTextPassword
-  
-    
-    - name: docker build
-      run: docker build -t githubactions-aks-demo:'${{github.sha}}' .
-    
-    - name: docker login
-      run: docker login --username '${{secrets.DOCKER_LOGIN}}' --password '${{secrets.DOCKER_PASSWORD}}'
-      
-    - name: tag docker image
-      run: docker tag githubactions-aks-demo:'${{github.sha}}' '${{secrets.DOCKER_LOGIN}}'/githubactions-aks-demo:'${{github.sha}}'
-    
-    - name: push docker image
-      run: docker push '${{secrets.DOCKER_LOGIN}}'/githubactions-aks-demo:'${{github.sha}}'
-      
-    - name: Azure Kubernetes set context
-      uses: Azure/aks-set-context@v1
-      with:
-        # Azure credentials i.e. output of `az ad sp create-for-rbac --sdk-auth`
-        creds: '${{secrets.AZURE_CREDENTIALS}}'
-        # Resource Group Name
-        resource-group: rg
-        # AKS Cluster Name
-        cluster-name: k8
-
-  # Create K8s secrets to pull images
-    - name: Create secret in Kubernetes cluster
-      uses: Azure/k8s-create-secret@v1.1
-      with:
-        # Container registry url
-        container-registry-url: https://acrnsr.azurecr.io
-        # Container registry username
-        container-registry-username: '${{secrets.DOCKER_LOGIN}}'
-        # Container registry password
-        container-registry-password:  '${{secrets.DOCKER_PASSWORD}}'
-        # Type of Kubernetes secret. For example, docker-registry or generic
-        secret-type: docker-registry
-        # Name of the secret. You can use this secret name in the Kubernetes YAML configuration file.
-        secret-name: docker-image-pull-secret
-        
-      # Deploy to k8s cluster
-    - name: Deploy to Kubernetes cluster
-      uses: Azure/k8s-deploy@v1
-      with:        
-        # Path to the manifest files which will be used for deployment.
-        manifests: |
-          aks/deployment.yml
-          aks/service.yml
-        # Fully qualified resource URL of the image(s) to be used for substitutions on the manifest files Example: contosodemo.azurecr.io/helloworld:test
-        images: '${{secrets.DOCKER_LOGIN}}/githubactions-k8:${{github.sha}}'
-        # Name of a docker-registry secret that has already been set up within the cluster. Each of these secret names are added under imagePullSecrets field for the workloads found in the input manifest files
-        imagepullsecrets: docker-image-pull-secret
-        # deploy/promote/reject
-        action: deploy
+      - name: Checkout source code 
+        uses: actions/checkout@v3
+      - name: ACR build
+        id: build-push-acr
+        uses: azure/acr-build@v1
+        with:
+          service_principal: ${{ secrets.service_principal }}
+          service_principal_password: ${{ secrets.service_principal_password }}
+          tenant: ${{ secrets.tenant }}
+          registry: ${{ secrets.registry }}
+          repository: ${{ secrets.repository }}
+          image:  azure-vote-front
+          folder: azure-vote
+          branch: master
+          tag: ${{ github.sha }}
+      - name: Azure login
+        id: login
+        uses: azure/login@v1.4.3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Set AKS context
+        id: set-context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: '${{ secrets.resource_group }}' 
+          cluster-name: '${{ secrets.cluster_name }}'
+      - name: Setup kubectl
+        id: install-kubectl
+        uses: azure/setup-kubectl@v3
+      - name: Deploy to AKS
+        id: deploy-aks
+        uses: Azure/k8s-deploy@v4
+        with:
+          namespace: 'default'
+          manifests: |
+             aks/deployment.yml
+             aks/service/yml
+          images: '${{ secrets.registry }}.azurecr.io/${{ secrets.repository }}/azure-vote-front:${{ github.sha }}'
+          pull-images: false
