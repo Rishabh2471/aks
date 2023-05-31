@@ -51,12 +51,12 @@ jobs:
       # Checks out the repository this file is in
       - uses: actions/checkout@v3
       - name: Azure CLI Action
-  uses: Azure/cli@v1.0.7
-  with:
+        uses: Azure/cli@v1.0.7
+        with:
     # Specify the script here
-    inlineScript: 
+          inlineScript: 
     # Azure CLI version to be used to execute the script. If not provided, latest version is used
-    azcliversion: # optional, default is agentazcliversion
+          azcliversion: # optional, default is agentazcliversion
       # Logs in with your Azure credentials
       - name: Azure login
         uses: azure/login@v1.4.6
